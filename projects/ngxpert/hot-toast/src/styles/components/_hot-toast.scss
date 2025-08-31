@@ -14,7 +14,8 @@
   transition-property: border-bottom-left-radius, border-bottom-right-radius;
   transition-duration: 230ms;
   transition-timing-function: ease-out;
-  // will-change: var(--hot-toast-will-change, transform);
+  will-change: var(--hot-toast-will-change, transform, opacity);
+  touch-action: var(--hot-toast-touch-action, pan-y);
 
   &:hover,
   &:focus {

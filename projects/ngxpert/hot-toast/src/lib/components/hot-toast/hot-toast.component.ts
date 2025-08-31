@@ -266,6 +266,143 @@ export class HotToastComponent implements OnInit, AfterViewInit, OnDestroy, OnCh
     });
 
     this.setToastAttributes();
+    this.attachSwipeListeners();
+  }
+
+  // Swipe-to-dismiss implementation
+  private drag = {
+    active: false,
+    locked: false,
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastT: 0,
+    vx: 0,
+    dx: 0,
+  };
+
+  private rubberband(x: number) {
+    const a = 0.55;
+    const ax = Math.abs(x);
+    const eased = 1 - Math.pow(1 - Math.min(1, ax), a);
+    return Math.sign(x) * eased;
+  }
+
+  private decideDismiss(el: HTMLElement, dx: number, vx: number) {
+    const width = el.offsetWidth || 1;
+    const distanceDismiss = Math.abs(dx) > width * 0.35;
+    const velocityDismiss = Math.abs(vx) > 800;
+    return distanceDismiss || velocityDismiss;
+  }
+
+  private attachSwipeListeners() {
+    const el = this.toastBarBase.nativeElement;
+    this.ngZone.runOutsideAngular(() => {
+      const downUn = this.renderer.listen(el, 'pointerdown', (e: PointerEvent) => {
+        if ((e as any).button !== undefined && (e as any).button !== 0) return;
+        this.drag.active = true;
+        this.drag.locked = false;
+        this.drag.startX = e.clientX;
+        this.drag.startY = e.clientY;
+        this.drag.lastX = e.clientX;
+        this.drag.lastT = performance.now();
+        (el as any).setPointerCapture?.((e as any).pointerId);
+        this.ngZone.run(() => this.showAllToasts.emit(true));
+        this.renderer.setStyle(el, 'will-change', 'transform, opacity');
+        this.renderer.setStyle(el, 'touch-action', 'pan-y');
+        this.renderer.setStyle(el, 'cursor', 'grabbing');
+      });
+
+      const moveUn = this.renderer.listen(el, 'pointermove', (e: PointerEvent) => {
+        if (!this.drag.active) return;
+        const dxRaw = e.clientX - this.drag.startX;
+        const dy = e.clientY - this.drag.startY;
+        if (!this.drag.locked) {
+          const slop = 8;
+          if (Math.abs(dxRaw) < slop && Math.abs(dy) < slop) return;
+          if (Math.abs(dxRaw) > Math.abs(dy)) {
+            this.drag.locked = true;
+          } else {
+            cancelDrag();
+            return;
+          }
+        }
+        const width = el.offsetWidth || 1;
+        const eased = this.rubberband(dxRaw / width) * width;
+        this.drag.dx = eased;
+        const opacity = 1 - Math.min(1, Math.abs(eased) / width);
+        this.renderer.setStyle(el, 'transform', `translate3d(${eased}px,0,0)`);
+        this.renderer.setStyle(el, 'opacity', String(opacity));
+        const now = performance.now();
+        const dt = Math.max(1, now - this.drag.lastT);
+        this.drag.vx = ((e.clientX - this.drag.lastX) / dt) * 1000;
+        this.drag.lastX = e.clientX;
+        this.drag.lastT = now;
+      });
+
+      const upHandler = () => {
+        if (!this.drag.active) return;
+        const shouldDismiss = this.decideDismiss(el, this.drag.dx, this.drag.vx);
+        if (shouldDismiss) {
+          const width = el.offsetWidth || 1;
+          const target = Math.sign(this.drag.dx || 1) * (window.innerWidth + width);
+          const current = getComputedStyle(el);
+          (el as any)
+            .animate(
+              [
+                { transform: `translate3d(${this.drag.dx}px,0,0)`, opacity: Number(current.opacity) || 1 },
+                { transform: `translate3d(${target}px,0,0)`, opacity: 0 },
+              ],
+              { duration: 220, easing: 'cubic-bezier(.22,.61,.36,1)' }
+            )
+            .finished.finally(() => {
+              this.ngZone.run(() => {
+                this.beforeClosed.emit();
+                this.afterClosed.emit({ dismissedByAction: true, id: this.toast.id });
+              });
+              (navigator as any).vibrate?.(10);
+            });
+        } else {
+          const current = getComputedStyle(el);
+          (el as any)
+            .animate(
+              [
+                { transform: current.transform, opacity: Number(current.opacity) },
+                { transform: 'translate3d(0,0,0)', opacity: 1 },
+              ],
+              { duration: 240, easing: 'cubic-bezier(.17,.89,.32,1.27)' }
+            )
+            .finished.finally(() => {
+              this.renderer.removeStyle(el, 'transform');
+              this.renderer.removeStyle(el, 'opacity');
+              this.ngZone.run(() => this.showAllToasts.emit(false));
+            });
+        }
+        finishDrag();
+      };
+
+      const upUn = this.renderer.listen(el, 'pointerup', upHandler);
+      const cancelUn = this.renderer.listen(el, 'pointercancel', upHandler);
+
+      const cancelDrag = () => {
+        this.drag.active = false;
+        this.drag.locked = false;
+        this.ngZone.run(() => this.showAllToasts.emit(false));
+        this.renderer.removeStyle(el, 'cursor');
+        this.renderer.removeStyle(el, 'will-change');
+      };
+
+      const finishDrag = () => {
+        this.drag.active = false;
+        this.drag.locked = false;
+        this.drag.dx = 0;
+        this.drag.vx = 0;
+        this.renderer.removeStyle(el, 'cursor');
+        this.renderer.removeStyle(el, 'will-change');
+      };
+
+      this.unlisteners.push(downUn, moveUn, upUn, cancelUn);
+    });
   }
 
   softClose() {

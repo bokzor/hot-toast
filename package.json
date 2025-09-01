@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "ng": "ng",
-    "start": "ng serve",
+    "start": "ng serve --port 4500 --host 0.0.0.0",
     "start:lib": "ng build @ngxpert/hot-toast --watch",
     "build": "ng build",
     "unit": "npm run cy:open",

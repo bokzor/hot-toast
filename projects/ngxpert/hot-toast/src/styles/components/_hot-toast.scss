@@ -15,7 +15,7 @@
   transition-duration: 230ms;
   transition-timing-function: ease-out;
   will-change: var(--hot-toast-will-change, transform, opacity);
-  touch-action: var(--hot-toast-touch-action, pan-y);
+  touch-action: var(--hot-toast-touch-action, pan-x);
 
   &:hover,
   &:focus {

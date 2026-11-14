@@ -105,8 +105,15 @@ export class HotToastContainerComponent {
     if (this.defaultConfig.visibleToasts !== 0 && this.unGroupedToasts.length > this.defaultConfig.visibleToasts) {
       const closeToasts = this.toasts.slice(0, this.toasts.length - this.defaultConfig.visibleToasts);
       closeToasts.forEach((t) => {
-        if (t.autoClose) {
+        if (!t.autoClose) {
+          return;
+        }
+        if (this.hotToastComponentList?.some((item) => item.toast.id === t.id)) {
           this.closeToast(t.id);
+        } else if (!t.group?.parent) {
+          // Added in the same tick and never rendered: drop it rather than show it past `visibleToasts`.
+          // Group children are rendered by their parent, never by this container, so they are left alone.
+          this.afterClosed({ dismissedByAction: true, id: t.id });
         }
       });
     }
@@ -202,14 +209,16 @@ export class HotToastContainerComponent {
   }
 
   closeToast(id?: string) {
+    // The ViewChildren list is undefined until the container's first change detection.
+    // ponytail: closing a toast before it renders is a no-op (it stays up); evict it like addToast if that bites.
     if (id) {
-      const comp = this.hotToastComponentList.find((item) => item.toast.id === id);
+      const comp = this.hotToastComponentList?.find((item) => item.toast.id === id);
       if (comp) {
         comp.close();
         this.cdr.markForCheck();
       }
     } else {
-      this.hotToastComponentList.forEach((comp) => comp.close());
+      this.hotToastComponentList?.forEach((comp) => comp.close());
       this.cdr.markForCheck();
     }
   }
